@@ -1,0 +1,146 @@
+// Prisma schema - SQLite para desarrollo local
+// Para producción: cambiar provider a "postgresql" y url a env("DATABASE_URL")
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// =========================================
+// USUARIOS
+// =========================================
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("SECRETARY") // "ADMIN" | "SECRETARY"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cashShifts    CashShift[]
+  registrations Registration[]
+
+  @@map("users")
+}
+
+// =========================================
+// ACTIVIDADES Y CONFIGURACIÓN DE FORMULARIO
+// =========================================
+
+model Activity {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  date        DateTime
+  dateEnd     DateTime? // null = un solo día
+  location    String?
+  basePrice   Float    @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  formConfig    FormConfig?
+  registrations Registration[]
+
+  @@map("activities")
+}
+
+model FormConfig {
+  id         String   @id @default(cuid())
+  activityId String   @unique
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  fieldsConfig  String @default("{}")
+  pricingConfig String @default("{}")
+
+  updatedAt DateTime @updatedAt
+
+  @@map("form_configs")
+}
+
+// =========================================
+// INSCRIPCIONES
+// =========================================
+
+model Registration {
+  id          String   @id @default(cuid())
+  ticket      String   @unique @default(cuid())
+  activityId  String
+  activity    Activity @relation(fields: [activityId], references: [id])
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+
+  fullName  String
+  age       Int
+  shirtSize String?
+  area      String?
+  wantsTransport Boolean @default(false)
+  transportRoute String?
+
+  // JSON como String en SQLite
+  lodging String? // { needed: bool, type?: string }
+  meals   String? // { needed: bool, times: string[] }
+
+  totalAmount Float
+  totalPaid   Float  @default(0) // suma de todos los abonos
+  paymentStatus String @default("UNPAID") // "UNPAID" | "PARTIAL" | "PAID"
+  notes       String?
+  status      String @default("PENDING") // "PENDING" | "CONFIRMED" | "CANCELLED"
+
+  payments  Payment[]  // múltiples pagos/abonos permitidos
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@map("registrations")
+}
+
+// =========================================
+// PAGOS / ABONOS
+// =========================================
+
+model Payment {
+  id             String       @id @default(cuid())
+  registrationId String
+  registration   Registration @relation(fields: [registrationId], references: [id])
+  amount         Float
+  method         String       // "CASH" | "TRANSFER" | "CARD"
+  reference      String?
+  isAbono        Boolean      @default(false) // true = abono parcial
+  cashShiftId    String?
+  cashShift      CashShift?   @relation(fields: [cashShiftId], references: [id])
+  confirmedAt    DateTime     @default(now())
+
+  @@map("payments")
+}
+
+// =========================================
+// CAJA / TURNOS (ARQUEO)
+// =========================================
+
+model CashShift {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  status        String   @default("OPEN")
+  openingAmount Float    @default(0)
+  openedAt      DateTime @default(now())
+
+  closingCashAmount     Float?
+  closingTransferAmount Float?
+  expectedAmount        Float?
+  difference            Float?
+  closingNotes          String?
+  closedAt              DateTime?
+
+  payments Payment[]
+
+  @@map("cash_shifts")
+}
